@@ -58,8 +58,16 @@ class TelaPrincipal(QWidget):
 
         #self.processo.sinal.connect(self.atualizar_tempo_interface)
 
+        # Conectar o evento de fechamento da tela ao método de encerramento do thread
+        self.closeEvent = self.fechar_tela
+
         # Configurar layout
         self.botao_cancelar.clicked.connect(self.close)
+
+    def fechar_tela(self, event):
+        # Parar o thread antes de fechar a tela
+        self.processo.parar()
+        event.accept()
     
 
 class Processo(QThread):
@@ -69,6 +77,7 @@ class Processo(QThread):
         super().__init__(parent)
         self.host = host
         self.port = port
+        self.rodando = True
 
     def run(self):
         HOST = self.host
@@ -77,9 +86,14 @@ class Processo(QThread):
         s.bind((HOST, PORT))
 
 
-        while True:
+        while self.rodando:
             print(f'HOST: {self.host} PORT: {self.port}')
             time.sleep(5)
+
+    def parar(self):
+        # Método para parar o thread de forma segura
+        self.rodando = False
+        self.wait()  # Aguarda o thread ser encerrado
 
 def abrir_telas():
     processos = []
