@@ -53,7 +53,7 @@ class TelaPrincipal(QWidget):
         self.botao_cancelar.setStyleSheet("background-color: red; color: black;")
 
         # Iniciando processo em uma thread separada
-        self.processo = Processo(self.host,self.port)
+        self.processo = Processo(self.numero, self.host,self.port)
         self.processo.start()
 
         #self.processo.sinal.connect(self.atualizar_tempo_interface)
@@ -73,21 +73,43 @@ class TelaPrincipal(QWidget):
 class Processo(QThread):
     sinal = pyqtSignal(str)
 
-    def __init__(self, host, port , parent=None,):
+    def __init__(self, id, host, port , parent=None,):
         super().__init__(parent)
+        self.id = id
         self.host = host
         self.port = port
         self.rodando = True
 
     def run(self):
+        #host e port do processo
         HOST = self.host
         PORT = self.port
+
+        host_formatado = f'127.0.0.{(self.id % 3) + 1}'
+        #host e port do processo vizinho
+        HOST_VIZINHO = host_formatado
+        PORT_VIZINHO = self.port + 1
+
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.bind((HOST, PORT))
 
+        s.listen()
+
+        time.sleep(5)
+
+        # Attempt to connect to a neighbor
+        try:
+            client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            client_socket.connect((HOST_VIZINHO, PORT_VIZINHO))
+        except Exception as e:
+            client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            client_socket.connect(('127.0.0.1', 8001))
 
         while self.rodando:
-            print(f'HOST: {self.host} PORT: {self.port}')
+            conn, ender = s.accept()
+            print(f"Node {HOST}:{PORT}")
+            print(f"Conectado a {conn}, {ender}")
+            
             time.sleep(5)
 
     def parar(self):
