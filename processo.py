@@ -13,116 +13,56 @@ enderecos_servers = [
 
 threads = []
 
-def server(id, endereco, endereco_prox_servidor):
-    global enderecos_servers
+def cliente(id, coordenador):
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client_socket.connect(coordenador)
 
-    # Cria socket de servidor
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind(endereco)
-    lider = False
-    participante = False
-    conectado = False
-    
-    server_socket.listen()
-    
-    # def eleicao():
-    #     print(f"Server {id} em {endereco} esperando conexão...")
-    #     conn, endereco_cliente = server_socket.accept()
-    #     print(f"Conexão de {endereco_cliente}")
+    time.sleep(5)
 
-    #     # Recebe a mensagem enviada
-    #     data = conn.recv(1024)
-
-    #     data = data.decode('utf-8')
-    #     print(f"Server {id} recebeu: {data}")
+    while True:
+        client_socket.sendall('Ping'.encode())
+        data = client_socket.recv(1024)
+        data = data.decode('utf-8')
+        print(f"PROCESSO {id} recebeu: {data}")
+        time.sleep(5)
 
 
-    #     if data == "ELEICAO":
-    #         participante = True
-    #         print(data)
-    #         data = f'{id}'
-    #         print(data)
-    #         # Manda mensagem para o próximo server no anel
-    #         mandar_mensagem(endereco_prox_servidor, data.encode())
-    #     else:
-    #         if int(data) == id:
-    #             print(f"Processo {id} eleito o novo líder!")
-    #             lider = True
-
-    #         if int(data) > id:
-    #             participante = True
-    #             # Manda mensagem para o próximo server no anel
-    #             mandar_mensagem(endereco_prox_servidor, data.encode())
-            
-    #         if int(data) < id and participante == False:
-    #             data = f'{id}'
-    #             # Manda mensagem para o próximo server no anel
-    #             mandar_mensagem(endereco_prox_servidor, data.encode())
-            
-        
-    #     time.sleep(5)
-
-    #     # Fecha a conexão atual
-    #     conn.close() 
-
-    def thread_conexao(conn, client_address):
-        contador = 0
+def thread_conexao(conn, client_address):
         print(f"Conexão de: {client_address} INICIADA")
-        while contador != 2:
-            contador += 1
+        while True:
             data = conn.recv(1024)
             data = data.decode('utf-8')
-            print(f"Lider {id} recebeu: {data}")
-            conn.sendall('Olá!'.encode())
+            print(f"Coordenador recebeu: {data}")
+            conn.sendall('PONG'.encode())
 
             if not data:
                 break
-        
-        
+
+def server(id, endereco, endereco_prox_servidor):
+    global enderecos_servers
+    coordenador = False 
 
     if id == len(enderecos_servers):
+        coordenador = True
+    # Cria socket de servidor
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.bind(endereco)
+    
+    server_socket.listen()
+
+    print("Teste")
+
+    if coordenador:
         while True:
             conn, client_address = server_socket.accept()
             print(f"Conexão de: {client_address} REQUISITADA")
-
-            connection_thread = threading.Thread(target=thread_conexao, args=(conn, client_address))
-            connection_thread.start()
-            
+            resposta_thread = threading.Thread(target=thread_conexao, args=(conn, client_address))
+            resposta_thread.start()
     else:
-        while True:
-            if conectado == False:
-                lider = enderecos_servers[len(enderecos_servers) - 1]
-                client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                client_socket.connect(lider)
-                conectado = True
-                
-            time.sleep(5)
+        coordenador = enderecos_servers[len(enderecos_servers) - 1]
+        cliente_thread = threading.Thread(target=cliente, args=(id, coordenador,))
+        cliente_thread.start()
 
-            client_socket.sendall(f'Processo {id}: Olá lider!'.encode())
-
-            # Recebe a mensagem enviada
-            try:
-                data = client_socket.recv(1024)
-            except:
-                print("Lider caiu")
-                data = 'ELEICAO'
-                print(f"Processo {id} recebeu: {data}")
-                break
-                
-
-            data = data.decode('utf-8')
-            print(f"Processo {id} recebeu: {data}")
-        
-
-
-
-def mandar_mensagem(endereco_destino, mensagem):
-    # Cria um socket com uma conexão ao próximo server no anel
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
-        client_socket.connect(endereco_destino)
-
-        # Manda mensagem para o próximo server
-        client_socket.sendall(mensagem)
 
 
 def main():
