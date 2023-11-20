@@ -1,68 +1,79 @@
+import argparse
 import socket
 import threading
 import time
 
-
-# Endereço dos servidores no anel
 enderecos_servers = [
     ('localhost', 8001),
     ('localhost', 8002),
-    ('localhost', 8003),   
+    ('localhost', 8003),
+    ('localhost', 8004),
+    ('localhost', 8005),
+    ('localhost', 8006),
+    ('localhost', 8007),
+       
 ]
 
-threads = []
-
-coordenador_recebendo = True
-
-
-def terminar_coordenador(coordenador):
-    global coordenador_recebendo
-    time.sleep(20)
-    try:
-        coordenador.close()
-    except:
-        print("Não deu")
-
-def cliente(id, coordenador, servidor):
-    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client_socket.connect(coordenador)
-
-    time.sleep(5)
+def cliente(id, coordenador,):
+    coordenador = enderecos_servers[int(coordenador) - 1]
 
     while True:
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            client_socket.sendall('Ping'.encode())
-        except:
-            print("COORDENADOR MORREU")
-            client_socket.close()  # Close the existing connection
-            client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  # Create a new socket
-            client_socket.connect(servidor)
-            client_socket.sendall('ELEICAO'.encode())
-        data = client_socket.recv(1024)
-        data = data.decode('utf-8')
-        print(f"PROCESSO {id} recebeu: {data}")
+            client_socket.connect(coordenador)
+            client_socket.sendall(f'PING'.encode())
+        except Exception as e:
+            servidor_do_cliente = enderecos_servers[int(id) - 1]
+            enderecos_servers.pop()
+            client_socket.close()
+            client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            client_socket.connect(servidor_do_cliente)
+            client_socket.sendall(f'ELEICAO'.encode())
+            client_socket.close()
+            break
+        
+        try:
+            data = client_socket.recv(1024)
+            data = data.decode('utf-8')
+            print(data)
+        except Exception as e:
+            client_socket.close()
+
+        client_socket.close()
         time.sleep(5)
 
+def mandar_msg(endereco_prox_servidor, mensagem):
+    esperando_conexao = True
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    while esperando_conexao:
+        try:
+            client_socket.connect(endereco_prox_servidor)
+            break
+        except:
+            pass
+    client_socket.sendall(f'{mensagem}'.encode())
 
-def thread_conexao(conn, client_address):
-        print(f"Conexão de: {client_address} INICIADA")
-        while True:
-            data = conn.recv(1024)
-            data = data.decode('utf-8')
+    client_socket.close()
 
-            if data == 'Ping':
-                print(f"Coordenador recebeu: {data}")
-                conn.sendall('PONG'.encode())
-            if data == 'ELEICAO':
-                print("ELEICAO GARAI")
+def eleicao_inicial(endereco):
+    esperando_conexao = True
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    while esperando_conexao:
+        try:
+            client_socket.connect(endereco)
+            break
+        except:
+            pass
+    client_socket.sendall(f'ELEICAO'.encode())
 
-            if not data:
-                break
-
-def server(id, endereco, endereco_prox_servidor):
+    client_socket.close()
+        
+def server(id):
     global enderecos_servers
-    global coordenador_recebendo
-    coordenador = False 
+    coordenador = False
+    participante = False
+
+    endereco = enderecos_servers[id-1]
 
     # Cria socket de servidor
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -70,40 +81,61 @@ def server(id, endereco, endereco_prox_servidor):
     
     server_socket.listen()
 
-    if id == len(enderecos_servers):
-        coordenador = True
-        terminar_thread = threading.Thread(target=terminar_coordenador, args=(server_socket,))
-        terminar_thread.start()
+    print(f'Processo {id} com o endereco {endereco} escutando')
 
-    if not coordenador:
-            coordenador = enderecos_servers[len(enderecos_servers) - 1]
-            cliente_thread = threading.Thread(target=cliente, args=(id, coordenador, endereco))
-            cliente_thread.start()
-    
+    eleicao_inicial(enderecos_servers[id % len(enderecos_servers)])
+
     while True:
         conn, client_address = server_socket.accept()
-        print(f"Conexão de: {client_address} REQUISITADA")
-        resposta_thread = threading.Thread(target=thread_conexao, args=(conn, client_address))
-        resposta_thread.start()
+        data = conn.recv(1024)
+        data = data.decode('utf-8')
 
-        
+        if data.split("|")[0] == 'ELEITO' and participante and not coordenador:
+            participante = False
+            cliente_thread = threading.Thread(target=cliente, args=(id, data.split("|")[1]))
+            cliente_thread.start()
+            msg = threading.Thread(target=mandar_msg, args=(enderecos_servers[id % len(enderecos_servers)], data))
+            msg.start()
+
+        if data == 'PING' and coordenador:
+            print(f"Coordenador recebeu: {data}")
+            conn.sendall('PONG'.encode())
+
+        if participante:
+            if int(data) == id:
+                print("Você é o novo coordenador!")
+                if len(enderecos_servers) == 1:
+                        print("Novo anel de conexões não pode ser criado, apenas 1 servidor restante.")
+                        break
+                coordenador = True
+                participante = False
+                msg = threading.Thread(target=mandar_msg, args=(enderecos_servers[id % len(enderecos_servers)], f'ELEITO|{id}'))
+                msg.start()
+
+            if int(data) < id:
+                print("passe pro proximo sua id")
+                msg = threading.Thread(target=mandar_msg, args=(enderecos_servers[id % len(enderecos_servers)], id))
+                msg.start()
+            if int(data) > id:
+                print("passe a id recebida para o proximo")
+                msg = threading.Thread(target=mandar_msg, args=(enderecos_servers[id % len(enderecos_servers)], int(data)))
+                msg.start()
+
+        if data == 'ELEICAO':
+            participante = True
+            msg = threading.Thread(target=mandar_msg, args=(enderecos_servers[id % len(enderecos_servers)], id))
+            msg.start()
+
+
 
 
 
 def main():
-    global enderecos_servers
-    global threads
-
-    # Inicia uma thread pra cada server
-    for i in range(len(enderecos_servers)):
-        endereco_prox_servidor = enderecos_servers[(i + 1) % len(enderecos_servers)]
-        thread = threading.Thread(target=server, args=(i + 1, enderecos_servers[i], endereco_prox_servidor,))
-        threads.append(thread)
-        thread.start()
-
-    # espera todas as threads terminarem
-    for thread in threads:
-        thread.join()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--id", type=int, help="Client ID", required=True)
+    args = parser.parse_args()
+    server(args.id)
+    
 
 if __name__ == "__main__":
     main()
